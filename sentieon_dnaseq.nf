@@ -46,8 +46,6 @@ process alignment {
     file "${sample_id}_sorted.bam" into outputs_sorted_bam
     file "${sample_id}_sorted.bam.bai" into outputs_indexed_bam
     file "code_ver"
-
-    container "job-definition://${jobdef}"
     
     """
     echo ${code_ver}
@@ -95,8 +93,6 @@ process alignment_metrics {
     file "${sample_id}.aln_metrics.txt" into output_alignsummary
     file "${sample_id}.is_metrics.txt" into output_insertsize
     file "code_ver"
-
-    container "job-definition://${jobdef}"
     
     """
     /usr/local/sentieon-genomics/bin/sentieon driver --input '${aligned_bam}' \
@@ -134,9 +130,7 @@ process plot_alignment_metrics_gc {
     file input_gcmetrics from output_gcmetrics
 
     output:
-    file "${sample_id}.gc_metrics_plot.pdf"
-
-    container "job-definition://${jobdef}"
+    file "${sample_id}.gc_metrics_plot.pdf"    
     
     """
     /usr/local/sentieon-genomics/bin/sentieon plot GCBias -o "${sample_id}.gc_metrics_plot.pdf" '${input_gcmetrics}'
@@ -161,9 +155,7 @@ process plot_alignment_metrics_qd {
 
     output:
     file "${sample_id}.qd_metrics_plot.pdf"
-    file "code_ver"
-
-    container "job-definition://${jobdef}"
+    file "code_ver"    
     
     """
     /usr/local/sentieon-genomics/bin/sentieon plot QualDistribution -o "${sample_id}.qd_metrics_plot.pdf" '${input_qualdistribution}'
@@ -190,9 +182,7 @@ process plot_alignment_metrics_mq {
 
     output:
     file "${sample_id}.mq_metrics_plot.pdf"
-    file "code_ver"
-
-    container "job-definition://${jobdef}"
+    file "code_ver"    
     
     """
     /usr/local/sentieon-genomics/bin/sentieon plot MeanQualityByCycle -o "${sample_id}.mq_metrics_plot.pdf" '${input_meanqualitybycycle}'
@@ -221,7 +211,6 @@ process plot_alignment_metrics_isize {
     file "${sample_id}.is_metrics_plot.pdf"
     file "code_ver"
 
-    container "job-definition://${jobdef}"
     
     """
     /usr/local/sentieon-genomics/bin/sentieon plot InsertSizeMetricAlgo -o "${sample_id}.is_metrics_plot.pdf" '${input_insertsize}'
@@ -252,7 +241,6 @@ process locus_collector {
     file "${sample_id}.score.txt.idx" into output_score_info_index
     file "code_ver"
 
-    container "job-definition://${jobdef}"
     
     """
     /usr/local/sentieon-genomics/bin/sentieon driver --input '${aligned_bam}' \
@@ -281,7 +269,6 @@ process deduplication {
     file "${sample_id}.dedup_metrics.txt" into outputs_deduped_metrics
     file "code_ver"
 
-    container "job-definition://${jobdef}"
     
     """
     /usr/local/sentieon-genomics/bin/sentieon driver --input '${aligned_bam}' \
@@ -320,8 +307,6 @@ process realignment {
     file "${sample_id}.bam" into outputs_bam_realignment
     file "${sample_id}.bam.bai" into outputs_realigned_indexed_bam
     file "code_ver"
-
-    container "job-definition://${jobdef}"
     
     """
     /usr/local/sentieon-genomics/bin/sentieon driver --input '${deduped_bam}' \
@@ -372,8 +357,6 @@ process qualcal {
     output:
     file "${sample_id}.recal.table" into outputs_recal_table
     file "code_ver"
-
-    container "job-definition://${jobdef}"
     
     """
     /usr/local/sentieon-genomics/bin/sentieon driver --input '${realigned_bam}' \
@@ -414,8 +397,6 @@ process qualcalpost {
     output:
     file "${sample_id}.recal.table.post" into outputs_recal_table_post
     file "code_ver"
-
-    container "job-definition://${jobdef}"
     
     """
     /usr/local/sentieon-genomics/bin/sentieon driver --input '${realigned_bam}' \
@@ -442,8 +423,6 @@ process applyrecal {
     output:
     file "${sample_id}.recal.csv" into outputs_bqsr
     file "code_ver"
-
-    container "job-definition://${jobdef}"
     
     """
     /usr/local/sentieon-genomics/bin/sentieon driver --thread_count '${threads}' \
@@ -466,8 +445,6 @@ process plotbqsr {
     output:
     file "${sample_id}.recal.pdf"
     file "code_ver"
-
-    container "job-definition://${jobdef}"
     
     """
     /usr/local/sentieon-genomics/bin/sentieon plot QualCal -o '${sample_id}.recal.pdf' '${recal_table}'
@@ -509,9 +486,7 @@ process haplotypecaller {
     file "${sample_id}.g.vcf.gz" into outputs_gvcf
     file "${sample_id}.g.vcf.gz.tbi" into outputs_gvcf_index
     file "code_ver"
-
-    container "job-definition://${jobdef}"
-    
+   
     
     """
     if [[ $wes == "true" ]]
