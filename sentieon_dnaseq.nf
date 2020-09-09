@@ -10,14 +10,13 @@ fasta_ref_pac = file( params.fasta_ref+'.64.pac' )
 fasta_ref_sa = file( params.fasta_ref+'.64.sa' )
 fasta_ref_dict = file( params.fasta_ref.replace(".fasta",".dict") )
 
-fastq1Path = params.fastqr1
-fastq2Path = params.fastqr2
+fastq1Path = file(params.fastqr1)
+fastq2Path = file(params.fastqr2)
 sample_id = params.sample_id
 threads = params.threads
 outpath = params.outpath
-shipment = params.shipment
 code_ver = params.code_ver
-wes = params.wes
+iswes = params.wes
 aws_region = params.aws_region
 jobdef = params.jobdef
 
@@ -31,6 +30,9 @@ reference_bedfile = params.wes_bedfile
 process alignment {
     tag "${sample_id}"
 
+    cpus 35
+    memory '61400 MB'
+
     input:
     file fasta_ref
     file fasta_ref_dict
@@ -41,29 +43,19 @@ process alignment {
     file fasta_ref_bwt
     file fasta_ref_pac
     file fasta_ref_sa
+    file fastq1Path
+    file fastq2Path
 
     output:
     file "${sample_id}_sorted.bam" into outputs_sorted_bam
     file "${sample_id}_sorted.bam.bai" into outputs_indexed_bam
     file "code_ver"
+
+    publishDir "${outpath}/fastq/${sample_id}/", mode: 'copy', overwrite: false
     
     """
-    echo ${code_ver}
-
-    aws s3 cp ${fastq1Path} ${sample_id}_R1.fastq.gz --region ${aws_region}
-    aws s3 cp ${fastq2Path} ${sample_id}_R2.fastq.gz --region ${aws_region}
-
-    /usr/local/sentieon-genomics/bin/bwa mem -v 1 -K '${params.chunk_size}' -R "@RG\tID:${sample_id}\tSM:${sample_id}\tPL:Illumina" -M -t '${threads}' '${fasta_ref}' '${sample_id}_R1.fastq.gz' '${sample_id}_R2.fastq.gz' | /usr/local/sentieon-genomics/bin/sentieon util sort -r '${fasta_ref}' -o '${sample_id}_sorted.bam' -t '${threads}' --sam2bam -i -
-
-    fastq_file_nums=`aws s3 ls ${outpath}/fastq/${sample_id}/ --region ${aws_region} | wc -l`
-
-    if (( \$fastq_file_nums < 2 )); then
-        echo "Number of files do not match the expected number (2)"
-        exit -1
-    fi
-
+    bwa mem -v 1 -K '${params.chunk_size}' -R "@RG\\tID:${sample_id}\\tSM:${sample_id}\\tPL:Illumina" -M -t '${threads}' '${fasta_ref}' '${fastq1Path}' '${fastq2Path}' | sentieon util sort -r '${fasta_ref}' -o '${sample_id}_sorted.bam' -t '${threads}' --sam2bam -i -
     echo ${code_ver} > code_ver
-
     """
 }
 
@@ -78,12 +70,6 @@ process alignment_metrics {
     file fasta_ref
     file fasta_ref_dict
     file fasta_ref_fai
-    file fasta_ref_alt
-    file fasta_ref_amb
-    file fasta_ref_ann
-    file fasta_ref_bwt
-    file fasta_ref_pac
-    file fasta_ref_sa
 
     output:
     file "${sample_id}.mq_metrics.txt" into output_meanqualitybycycle
@@ -93,9 +79,11 @@ process alignment_metrics {
     file "${sample_id}.aln_metrics.txt" into output_alignsummary
     file "${sample_id}.is_metrics.txt" into output_insertsize
     file "code_ver"
+
+    publishDir "${outpath}/metrics/${sample_id}/", mode: 'copy', overwrite: false
     
     """
-    /usr/local/sentieon-genomics/bin/sentieon driver --input '${aligned_bam}' \
+    sentieon driver --input '${aligned_bam}' \
                                                      --reference '${fasta_ref}'  \
                                                      --thread_count '${threads}' \
                                                      --algo MeanQualityByCycle '${sample_id}.mq_metrics.txt'  \
@@ -103,19 +91,7 @@ process alignment_metrics {
                                                      --algo GCBias --summary '${sample_id}.gc_summary.txt' '${sample_id}.gc_metrics.txt'  \
                                                      --algo AlignmentStat '${sample_id}.aln_metrics.txt'  \
                                                      --algo InsertSizeMetricAlgo '${sample_id}.is_metrics.txt'
-
-    mkdir upload_dir
-    cp ${sample_id}.*.txt upload_dir
-    aws s3 cp upload_dir ${outpath}/metrics/${sample_id}/ --region ${aws_region} --recursive
-
-    metrics_file_nums=`aws s3 ls ${outpath}/metrics/${sample_id}/ --region ${aws_region} | wc -l`
-
-    if (( \$metrics_file_nums < 6 )); then
-        echo "Number of files do not match the expected number (6)"
-        exit -1
-    fi
-
-    echo "${code_ver}" > code_ver
+    echo ${code_ver} > code_ver
     """
 }
 
@@ -130,18 +106,12 @@ process plot_alignment_metrics_gc {
     file input_gcmetrics from output_gcmetrics
 
     output:
-    file "${sample_id}.gc_metrics_plot.pdf"    
+    file "${sample_id}.gc_metrics_plot.pdf"
+
+    publishDir "${outpath}/metrics/${sample_id}/", mode: 'copy', overwrite: false
     
     """
-    /usr/local/sentieon-genomics/bin/sentieon plot GCBias -o "${sample_id}.gc_metrics_plot.pdf" '${input_gcmetrics}'
-
-    aws s3 cp ${sample_id}.gc_metrics_plot.pdf ${outpath}/metrics/${sample_id}/ --region ${aws_region}
-    metrics_file_nums=`aws s3 ls ${outpath}/metrics/${sample_id}/ --region ${aws_region} | wc -l`
-
-    if (( \$metrics_file_nums < 7 )); then
-        echo "Number of files do not match the expected number (7)"
-        exit -1
-    fi
+    sentieon plot GCBias -o "${sample_id}.gc_metrics_plot.pdf" '${input_gcmetrics}'
     """
 }
 
@@ -155,20 +125,11 @@ process plot_alignment_metrics_qd {
 
     output:
     file "${sample_id}.qd_metrics_plot.pdf"
-    file "code_ver"    
+
+    publishDir "${outpath}/metrics/${sample_id}/", mode: 'copy', overwrite: false
     
     """
-    /usr/local/sentieon-genomics/bin/sentieon plot QualDistribution -o "${sample_id}.qd_metrics_plot.pdf" '${input_qualdistribution}'
-
-    aws s3 cp ${sample_id}.qd_metrics_plot.pdf ${outpath}/metrics/${sample_id}/ --region ${aws_region}
-    metrics_file_nums=`aws s3 ls ${outpath}/metrics/${sample_id}/ --region ${aws_region} | wc -l`
-
-    if (( \$metrics_file_nums < 7 )); then
-        echo "Number of files do not match the expected number (6)"
-        exit -1
-    fi
-
-    echo "${code_ver}" > code_ver
+    sentieon plot QualDistribution -o "${sample_id}.qd_metrics_plot.pdf" '${input_qualdistribution}'
     """
 }
 
@@ -182,20 +143,11 @@ process plot_alignment_metrics_mq {
 
     output:
     file "${sample_id}.mq_metrics_plot.pdf"
-    file "code_ver"    
+
+    publishDir "${outpath}/metrics/${sample_id}/", mode: 'copy', overwrite: false
     
     """
-    /usr/local/sentieon-genomics/bin/sentieon plot MeanQualityByCycle -o "${sample_id}.mq_metrics_plot.pdf" '${input_meanqualitybycycle}'
-
-    aws s3 cp ${sample_id}.mq_metrics_plot.pdf ${outpath}/metrics/${sample_id}/ --region ${aws_region}
-    metrics_file_nums=`aws s3 ls ${outpath}/metrics/${sample_id}/ --region ${aws_region} | wc -l`
-
-    if (( \$metrics_file_nums < 7 )); then
-        echo "Number of files do not match the expected number (7)"
-        exit -1
-    fi
-
-    echo "${code_ver}" > code_ver
+    sentieon plot MeanQualityByCycle -o "${sample_id}.mq_metrics_plot.pdf" '${input_meanqualitybycycle}'
     """
 }
 
@@ -209,21 +161,11 @@ process plot_alignment_metrics_isize {
 
     output:
     file "${sample_id}.is_metrics_plot.pdf"
-    file "code_ver"
 
+    publishDir "${outpath}/metrics/${sample_id}/", mode: 'copy', overwrite: false
     
     """
-    /usr/local/sentieon-genomics/bin/sentieon plot InsertSizeMetricAlgo -o "${sample_id}.is_metrics_plot.pdf" '${input_insertsize}'
-
-    aws s3 cp ${sample_id}.is_metrics_plot.pdf ${outpath}/metrics/${sample_id}/ --region ${aws_region}
-    metrics_file_nums=`aws s3 ls ${outpath}/metrics/${sample_id}/ --region ${aws_region} | wc -l`
-
-    if (( \$metrics_file_nums < 7 )); then
-        echo "Number of files do not match the expected number (7)"
-        exit -1
-    fi
-
-    echo "${code_ver}" > code_ver
+    sentieon plot InsertSizeMetricAlgo -o "${sample_id}.is_metrics_plot.pdf" '${input_insertsize}'
     """
 }
 
@@ -239,16 +181,14 @@ process locus_collector {
     output:
     file "${sample_id}.score.txt" into output_score_info
     file "${sample_id}.score.txt.idx" into output_score_info_index
-    file "code_ver"
 
     
     """
-    /usr/local/sentieon-genomics/bin/sentieon driver --input '${aligned_bam}' \
+    sentieon driver --input '${aligned_bam}' \
                                                      --thread_count '${threads}' \
                                                      --algo LocusCollector \
                                                      --fun score_info '${sample_id}.score.txt'
 
-    echo "${code_ver}" > code_ver
     """
 }
 
@@ -267,19 +207,16 @@ process deduplication {
     file "${sample_id}.deduped.bam" into outputs_deduped_bam
     file "${sample_id}.deduped.bam.bai" into outputs_deduped_indexed_bam
     file "${sample_id}.dedup_metrics.txt" into outputs_deduped_metrics
-    file "code_ver"
 
     
     """
-    /usr/local/sentieon-genomics/bin/sentieon driver --input '${aligned_bam}' \
+    sentieon driver --input '${aligned_bam}' \
                                                      --thread_count '${threads}' \
                                                      --algo Dedup \
                                                      --metrics '${sample_id}.dedup_metrics.txt' \
                                                      --rmdup \
                                                      --score_info '${score_info}' \
                                                      '${sample_id}.deduped.bam'
-
-    echo "${code_ver}" > code_ver
     """
 }
 
@@ -294,12 +231,6 @@ process realignment {
     file fasta_ref
     file fasta_ref_dict
     file fasta_ref_fai
-    file fasta_ref_alt
-    file fasta_ref_amb
-    file fasta_ref_ann
-    file fasta_ref_bwt
-    file fasta_ref_pac
-    file fasta_ref_sa
     file reference_mills
     file reference_mills_index
 
@@ -307,26 +238,16 @@ process realignment {
     file "${sample_id}.bam" into outputs_bam_realignment
     file "${sample_id}.bam.bai" into outputs_realigned_indexed_bam
     file "code_ver"
+
+    publishDir "${outpath}/bam/${sample_id}/", mode: 'copy', overwrite: false
     
     """
-    /usr/local/sentieon-genomics/bin/sentieon driver --input '${deduped_bam}' \
+    sentieon driver --input '${deduped_bam}' \
                                                      --reference '${fasta_ref}' \
                                                      --thread_count '${threads}' \
                                                      --algo Realigner \
                                                      --known_sites '${reference_mills}' \
                                                      '${sample_id}.bam'
-
-    aws s3 cp ${sample_id}.bam ${outpath}/bam/${sample_id}/ --region ${aws_region}
-    aws s3 cp ${sample_id}.bam.bai ${outpath}/bam/${sample_id}/ --region ${aws_region}
-
-    bam_file_nums=`aws s3 ls ${outpath}/bam/${sample_id}/ --region ${aws_region} | wc -l`
-
-    echo "Num of files: \$bam_file_nums"
-
-    if (( \$bam_file_nums < 2 )); then
-        echo "\$bam_file_nums does not match the expected number (2)"
-        exit -1
-    fi
 
     echo "${code_ver}" > code_ver
     """
@@ -343,12 +264,6 @@ process qualcal {
     file fasta_ref
     file fasta_ref_dict
     file fasta_ref_fai
-    file fasta_ref_alt
-    file fasta_ref_amb
-    file fasta_ref_ann
-    file fasta_ref_bwt
-    file fasta_ref_pac
-    file fasta_ref_sa
     file reference_mills
     file reference_mills_index
     file reference_dbsnp
@@ -356,18 +271,15 @@ process qualcal {
 
     output:
     file "${sample_id}.recal.table" into outputs_recal_table
-    file "code_ver"
     
     """
-    /usr/local/sentieon-genomics/bin/sentieon driver --input '${realigned_bam}' \
+    sentieon driver --input '${realigned_bam}' \
                                                      --reference '${fasta_ref}' \
                                                      --thread_count '${threads}' \
                                                      --algo QualCal \
                                                      --known_sites '${reference_dbsnp}' \
                                                      --known_sites '${reference_mills}' \
                                                      '${sample_id}.recal.table'
-                                            
-    echo "${code_ver}" > code_ver
     """
 }
 
@@ -383,12 +295,6 @@ process qualcalpost {
     file fasta_ref
     file fasta_ref_dict
     file fasta_ref_fai
-    file fasta_ref_alt
-    file fasta_ref_amb
-    file fasta_ref_ann
-    file fasta_ref_bwt
-    file fasta_ref_pac
-    file fasta_ref_sa
     file reference_mills
     file reference_mills_index
     file reference_dbsnp
@@ -396,10 +302,9 @@ process qualcalpost {
 
     output:
     file "${sample_id}.recal.table.post" into outputs_recal_table_post
-    file "code_ver"
-    
+
     """
-    /usr/local/sentieon-genomics/bin/sentieon driver --input '${realigned_bam}' \
+    sentieon driver --input '${realigned_bam}' \
                                                      --qual_cal '${qualcal}' \
                                                      --reference '${fasta_ref}' \
                                                      --thread_count '${threads}' \
@@ -407,7 +312,6 @@ process qualcalpost {
                                                      --known_sites '${reference_dbsnp}' \
                                                      --known_sites '${reference_mills}' \
                                                      '${sample_id}.recal.table.post'
-    echo "${code_ver}" > code_ver
     """
 }
 
@@ -422,15 +326,13 @@ process applyrecal {
 
     output:
     file "${sample_id}.recal.csv" into outputs_bqsr
-    file "code_ver"
     
     """
-    /usr/local/sentieon-genomics/bin/sentieon driver --thread_count '${threads}' \
+    sentieon driver --thread_count '${threads}' \
                                                      --algo QualCal \
                                                      --after '${recal_table}' \
                                                      --before '${qualcal}' \
                                                      --plot '${sample_id}.recal.csv'
-    echo "${code_ver}" > code_ver
     """
 }
 
@@ -444,20 +346,11 @@ process plotbqsr {
 
     output:
     file "${sample_id}.recal.pdf"
-    file "code_ver"
+
+    publishDir "${outpath}/metrics/${sample_id}/", mode: 'copy', overwrite: false
     
     """
-    /usr/local/sentieon-genomics/bin/sentieon plot QualCal -o '${sample_id}.recal.pdf' '${recal_table}'
-
-    aws s3 cp ${sample_id}.recal.pdf ${outpath}/metrics/${sample_id}/ --region ${aws_region}
-    metrics_file_nums=`aws s3 ls ${outpath}/metrics/${sample_id}/ --region ${aws_region} | wc -l`
-
-    if (( \$metrics_file_nums < 11 )); then
-        echo "Number of files do not match the expected number (11)"
-        exit -1
-    fi
-    
-    echo "${code_ver}" > code_ver
+    sentieon plot QualCal -o '${sample_id}.recal.pdf' '${recal_table}'
     """
 }
 
@@ -473,12 +366,6 @@ process haplotypecaller {
     file fasta_ref
     file fasta_ref_dict
     file fasta_ref_fai
-    file fasta_ref_alt
-    file fasta_ref_amb
-    file fasta_ref_ann
-    file fasta_ref_bwt
-    file fasta_ref_pac
-    file fasta_ref_sa
     file reference_dbsnp
     file reference_dbsnp_index
 
@@ -486,45 +373,26 @@ process haplotypecaller {
     file "${sample_id}.g.vcf.gz" into outputs_gvcf
     file "${sample_id}.g.vcf.gz.tbi" into outputs_gvcf_index
     file "code_ver"
-   
+
+    publishDir "${outpath}/gvcf/${sample_id}/", mode: 'copy', overwrite: false
     
     """
-    if [[ $wes == "true" ]]
+    ARG_INTERVAL=""
+    if [[ ${iswes} == "true" ]]
     then
         aws s3 cp ${reference_bedfile} wes.bed --region ${aws_region}
-        /usr/local/sentieon-genomics/bin/sentieon driver --input '${realigned_bam}' \
-                                                        --qual_cal '${recal_table}' \
-                                                        --reference '${fasta_ref}' \
-                                                        --thread_count '${threads}' \
-                                                        --interval wes.bed \
-                                                        --algo Haplotyper \
-                                                        --call_conf 30 \
-                                                        --dbsnp '${reference_dbsnp}' \
-                                                        --emit_conf 30 \
-                                                        --emit_mode Gvcf \
-                                                        '${sample_id}.g.vcf.gz'
-    else
-        /usr/local/sentieon-genomics/bin/sentieon driver --input '${realigned_bam}' \
-                                                        --qual_cal '${recal_table}' \
-                                                        --reference '${fasta_ref}' \
-                                                        --thread_count '${threads}'
-                                                        --algo Haplotyper \
-                                                        --call_conf 30 \
-                                                        --dbsnp '${reference_dbsnp}' \
-                                                        --emit_conf 30 \
-                                                        --emit_mode Gvcf \
-                                                        '${sample_id}.g.vcf.gz'
+        ARG_INTERVAL="--interval wes.bed"
     fi
-
-    aws s3 cp ${sample_id}.g.vcf.gz ${outpath}/gvcf/${sample_id}/ --region ${aws_region}
-    aws s3 cp ${sample_id}.g.vcf.gz.tbi ${outpath}/gvcf/${sample_id}/ --region ${aws_region}
-
-    gvcf_file_nums=`aws s3 ls ${outpath}/gvcf/${sample_id}/ --region ${aws_region} | wc -l`
-
-    if (( \$gvcf_file_nums < 2 )); then
-        echo "Number of gvcf related files do not match the expected number (2)"
-        exit -1
-    fi
+    sentieon driver \$ARG_INTERVAL --input '${realigned_bam}' \
+                                                               --qual_cal '${recal_table}' \
+                                                               --reference '${fasta_ref}' \
+                                                               --thread_count '${threads}' \
+                                                               --algo Haplotyper \
+                                                               --call_conf 30 \
+                                                               --dbsnp '${reference_dbsnp}' \
+                                                               --emit_conf 30 \
+                                                               --emit_mode Gvcf \
+                                                               '${sample_id}.g.vcf.gz'
 
     echo "${code_ver}" > code_ver
     """

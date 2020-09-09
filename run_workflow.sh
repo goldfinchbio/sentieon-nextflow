@@ -10,10 +10,9 @@ WES=$7
 AWSREGION=$8
 BATCH_JOBDEF=$9
 
-CODE_VER=$(</usr/src/app/code_vers)
-BASEOUTPUT=s3://${S3OUTPUT}/
-WORKDIR=s3://${S3WORKDIR}/
-WORKFLOWLOGPATH=s3://${S3LOGDIR}/
+BASEOUTPUT=${S3OUTPUT}/
+WORKDIR=${S3WORKDIR}/
+WORKFLOWLOGPATH=${S3LOGDIR}
 
 nextflow run sentieon_dnaseq.nf \
   -with-report ${SAMPLE}_report.html \
@@ -24,7 +23,6 @@ nextflow run sentieon_dnaseq.nf \
   --fastqr2 ${FASTQ2} \
   --sample_id ${SAMPLE} \
   --outpath ${BASEOUTPUT} \
-  --code_ver ${CODE_VER} \
   -bucket-dir ${WORKDIR}/${SAMPLE} \
   --output ${BASEOUTPUT}/${SAMPLE} \
   --jobdef ${BATCH_JOBDEF} \

@@ -1,5 +1,5 @@
 # Introduction
-This project contains a nextflow-based workflow for aligning a WGS or WES DNA sample using the Sentieon tool set.  
+This project contains a nextflow-based workflow for pre-processing a WGS or WES DNA sample using the Sentieon tool set in preparation for joint genotyping.  
 
 This project really just focuses on the workflow itself, with several assumptions built into it's design (see below for a description of these).
 
@@ -48,13 +48,13 @@ The following is an example running the alignment workflow with a WES sample
 ```bash
 ./run_workflow.sh \
 SRR077349 \
-ftp:/­/­ftp.­sra.­ebi.­ac.­uk/­vol1/­fastq/­SRR077/­SRR077349/­SRR077349_1.­fastq.­gz \
-ftp:/­/­ftp.­sra.­ebi.­ac.­uk/­vol1/­fastq/­SRR077/­SRR077349/­SRR077349_2.­fastq.­gz \
+ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR077/SRR077349/SRR077349_1.fastq.gz \
+ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR077/SRR077349/SRR077349_2.fastq.gz \
 s3://sentieon-nextflow/outputs \
 s3://sentieon-nextflow/workdir \
 s3://sentieon-nextflow/logs \
 true \
-us-east-1 \
+us-east-2 \
 sentieon-nextflow
 ```
 
@@ -114,3 +114,27 @@ Report:
 
 This is a subset of the entire report, only highlighting one of several sections available
 ![Report](outputs_report.png)
+
+# Example Batch Job Definition
+
+The following is an example CloudFormation script for a job definition in AWS Batch
+
+```
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: AWS Batch job defintion for the Sentieon tools
+
+Resources:
+  SentieonDNASeq:
+    Type: "AWS::Batch::JobDefinition"
+    Properties:
+      Type: container
+      JobDefinitionName: "DNASeq-sentieon-submit-job"
+      RetryStrategy:
+        Attempts: 1
+      ContainerProperties:
+        Memory: 1000
+        Vcpus: 1
+        JobRoleArn: !Ref DNASEQJobRole
+        Image: sentieon/sentieon-aws:201911-0
+```
